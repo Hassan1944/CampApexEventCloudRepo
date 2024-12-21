@@ -42,7 +42,7 @@ public with sharing class EventTriggerHandlerFactory {
     public void onBeforeInsert() {
         // Handle before insert logic
         validateEventinsert();
-        
+        // add a comment to retrigger
         updateFinace(Triggernew);
     }
 
