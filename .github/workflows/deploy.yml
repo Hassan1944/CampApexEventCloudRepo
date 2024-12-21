@@ -2,7 +2,7 @@ name: Deploy master branch to production org
 
 on:
   push:
-    branches: [ master ]
+    branches: [ main ]
     paths:
       - 'force-app/**'  # Trigger only on changes inside the `force-app` directory
 
