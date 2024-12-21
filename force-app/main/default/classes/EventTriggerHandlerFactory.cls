@@ -48,6 +48,7 @@ public with sharing class EventTriggerHandlerFactory {
 
     public void onAfterInsert(){
         // Handle after insert logic if needed
+        // to handele after insert logic
     }
 
     public void onAfterUpdate() {
