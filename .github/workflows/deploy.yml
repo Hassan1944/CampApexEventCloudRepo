@@ -16,7 +16,7 @@ jobs:
 
     # 2. Set up Salesforce CLI
     - name: Set up Salesforce CLI
-      uses: sfdx-actions/sfdx-cli-action@v1
+      uses: salesforcecli/sfdx-action@v2
 
     # 3. Authenticate to Salesforce Org
     - name: Authenticate to Salesforce Org
