@@ -1,65 +1,80 @@
-name: Deploy to Salesforce and Install Package if Needed
+name: Deploy master branch to production org
 
 on:
   push:
-    branches:
-      - main  # Trigger the deployment on push to the main branch
+    branches: [ master ]
+    paths:
+      - 'force-app/**'  # Trigger only on changes inside the `force-app` directory
 
 jobs:
-  deploy:
+  deploy-branch-to-production-org:
     runs-on: ubuntu-latest
+    if: ${{ github.actor != 'dependabot[bot]' }}  # Skip for Dependabot
 
     steps:
-    # 1. Checkout the code from GitHub
-    - name: Checkout code
-      uses: actions/checkout@v3
+      # 1. Install Salesforce CLI
+      - name: 'Install Salesforce CLI'
+        run: |
+          wget https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
+          mkdir ~/sfdx
+          tar xJf sfdx-linux-x64.tar.xz -C ~/sfdx --strip-components 1
+          echo "$HOME/sfdx/bin" >> $GITHUB_PATH
+          ~/sfdx/bin/sfdx version
 
-    # 2. Set up Salesforce CLI
-    - name: Set up Salesforce CLI
-      uses: salesforcecli/sfdx-action@v2
+      # 2. Install SFDX-Git-Delta plugin (optional but useful for delta deployments)
+      - name: 'Install sfdx git delta'
+        run: |
+          echo y | sfdx plugins:install sfdx-git-delta
+          sfdx plugins
 
-    # 3. Authenticate to Salesforce Org
-    - name: Authenticate to Salesforce Org
-      run: |
-        echo ${{ secrets.SF_PASSWORD }} | sfdx auth:web:login --username ${{ secrets.SF_USERNAME }} --instanceurl ${{ secrets.SF_ORG_URL }} --setalias my-org --no-prompt
-      env:
-        SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
-        SF_USERNAME: ${{ secrets.SF_USERNAME }}
-        SF_ORG_URL: ${{ secrets.SF_ORG_URL }}
+      # 3. Checkout the source code
+      - name: 'Checkout source code'
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Ensure full history to calculate deltas properly
 
-    # 4. Check if the Package is Installed
-    - name: Check if Managed Package is Installed
-      id: package_check
-      run: |
-        # List installed packages and check if the package is installed
-        INSTALLED_PACKAGES=$(sfdx force:package:installed:list --json)
-        PACKAGE_INSTALLED=$(echo "$INSTALLED_PACKAGES" | jq -r '.result[] | select(.SubscriberPackageName=="${{ secrets.PACKAGE_NAME }}") | .SubscriberPackageName')
-        
-        # Set output variable
-        if [[ "$PACKAGE_INSTALLED" == "${{ secrets.PACKAGE_NAME }}" ]]; then
-          echo "Package already installed."
-          echo "package_installed=true" >> $GITHUB_ENV
-        else
-          echo "Package not installed."
-          echo "package_installed=false" >> $GITHUB_ENV
-        fi
+      # 4. Store the SFDX URL secret for production org
+      - name: 'Populate auth file with SFDX_URL secret of the production org'
+        shell: bash
+        run: |
+          echo ${{ secrets.SFDX_PRODUCTION_URL }} > ./SFDX_PRODUCTION_URL.txt
 
-    # 5. Install Managed Package if Not Installed
-    - name: Install Managed Package
-      if: env.package_installed == 'false'
-      run: |
-        echo "Installing package..."
-        sfdx force:package:install --package ${{ secrets.PACKAGE_ID }} --wait 10 --publishwait 10 --noprompt
-      env:
-        PACKAGE_ID: ${{ secrets.PACKAGE_ID }}
+      # 5. Create delta packages (for changed, new, or deleted metadata)
+      - name: 'Create delta packages for new, modified or deleted metadata'
+        run: |
+          mkdir changed-sources
+          sfdx sgd:source:delta --to "HEAD" --from "HEAD^" --output changed-sources/ --generate-delta --source force-app/
 
-    # 6. Deploy Salesforce Code
-    - name: Deploy Salesforce Code
-      run: |
-        sfdx force:source:deploy -p force-app --testlevel RunLocalTests --checkonly
-        # Remove the --checkonly flag to actually deploy instead of just validating.
+      # 6. Authenticate to the Production Org using the URL secret
+      - name: 'Authenticate to Production Org'
+        run: sfdx auth:sfdxurl:store -f ./SFDX_PRODUCTION_URL.txt -s -a production
 
-    # 7. Post Deployment Status
-    - name: Post Deployment Status
-      run: |
-        echo "Deployment finished successfully!"
+      # 7. Check if the package is already installed
+      - name: 'Check if Managed Package is Installed'
+        id: package_check
+        run: |
+          INSTALLED_PACKAGES=$(sfdx force:package:installed:list --json)
+          PACKAGE_INSTALLED=$(echo "$INSTALLED_PACKAGES" | jq -r '.result[] | select(.SubscriberPackageName=="${{ secrets.PACKAGE_NAME }}") | .SubscriberPackageName')
+          
+          # Set output variable
+          if [[ "$PACKAGE_INSTALLED" == "${{ secrets.PACKAGE_NAME }}" ]]; then
+            echo "Package already installed."
+            echo "package_installed=true" >> $GITHUB_ENV
+          else
+            echo "Package not installed."
+            echo "package_installed=false" >> $GITHUB_ENV
+
+      # 8. Install Managed Package if Not Installed
+      - name: 'Install Managed Package'
+        if: env.package_installed == 'false'
+        run: |
+          echo "Installing package..."
+          sfdx force:package:install --package ${{ secrets.PACKAGE_ID }} --wait 10 --publishwait 10 --noprompt
+        env:
+          PACKAGE_ID: ${{ secrets.PACKAGE_ID }}
+
+      # 9. Deploy metadata using the Metadata API (mdapi)
+      - name: 'Deploy metadata using Metadata API (mdapi)'
+        run: |
+          sfdx force:mdapi:deploy -d changed-sources --deploydir manifest/ --wait 10 --json
+
