@@ -42,6 +42,7 @@ public with sharing class EventTriggerHandlerFactory {
     public void onBeforeInsert() {
         // Handle before insert logic
         validateEventinsert();
+        //used for updating the finances in the org CampApex
         updateFinace(Triggernew);
     }
 
