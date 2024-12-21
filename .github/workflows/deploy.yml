@@ -37,7 +37,7 @@ jobs:
       - name: 'Authenticate to Salesforce Production Org'
         run: |
           echo "Authenticating to Salesforce..."
-          sfdx org:login:web --username ${{ secrets.SF_USERNAME }} --password ${{ secrets.SF_PASSWORD }} --instanceurl ${{ secrets.SF_INSTANCE_URL }} --setalias production --no-prompt
+          sfdx org:login:web --username ${{ secrets.SF_USERNAME }} --password ${{ secrets.SF_PASSWORD }} --instanceurl ${{ secrets.SF_ORG_URL }} --setalias production --no-prompt
 
       # 5. Check if the package is already installed
       - name: 'Check if Managed Package is Installed'
