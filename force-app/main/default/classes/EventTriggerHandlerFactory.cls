@@ -38,7 +38,7 @@ public with sharing class EventTriggerHandlerFactory {
             }
         }
     }
-//Added a new line
+
     public void onBeforeInsert() {
         // Handle before insert logic
         validateEventinsert();
