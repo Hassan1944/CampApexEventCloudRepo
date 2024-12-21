@@ -2,7 +2,7 @@ name: Deploy master branch to production org
 
 on:
   push:
-    branches: [ main ]
+    branches: [ master ]
     paths:
       - 'force-app/**'  # Trigger only on changes inside the `force-app` directory
 
@@ -33,23 +33,13 @@ jobs:
         with:
           fetch-depth: 0  # Ensure full history to calculate deltas properly
 
-      # 4. Store the SFDX URL secret for production org
-      - name: 'Populate auth file with SFDX_URL secret of the production org'
-        shell: bash
+      # 4. Authenticate to Salesforce using username/password and instance URL
+      - name: 'Authenticate to Salesforce Production Org'
         run: |
-          echo ${{ secrets.SFDX_PRODUCTION_URL }} > ./SFDX_PRODUCTION_URL.txt
+          echo "Authenticating to Salesforce..."
+          sfdx auth:web:login --username ${{ secrets.SF_USERNAME }} --password ${{ secrets.SF_PASSWORD }} --instanceurl ${{ secrets.SF_INSTANCE_URL }} --setalias production --no-prompt
 
-      # 5. Create delta packages (for changed, new, or deleted metadata)
-      - name: 'Create delta packages for new, modified or deleted metadata'
-        run: |
-          mkdir changed-sources
-          sfdx sgd:source:delta --to "HEAD" --from "HEAD^" --output changed-sources/ --generate-delta --source force-app/
-
-      # 6. Authenticate to the Production Org using the URL secret
-      - name: 'Authenticate to Production Org'
-        run: sfdx auth:sfdxurl:store -f ./SFDX_PRODUCTION_URL.txt -s -a production
-
-      # 7. Check if the package is already installed
+      # 5. Check if the package is already installed
       - name: 'Check if Managed Package is Installed'
         id: package_check
         run: |
@@ -64,7 +54,7 @@ jobs:
             echo "Package not installed."
             echo "package_installed=false" >> $GITHUB_ENV
 
-      # 8. Install Managed Package if Not Installed
+      # 6. Install Managed Package if Not Installed
       - name: 'Install Managed Package'
         if: env.package_installed == 'false'
         run: |
@@ -73,8 +63,13 @@ jobs:
         env:
           PACKAGE_ID: ${{ secrets.PACKAGE_ID }}
 
-      # 9. Deploy metadata using the Metadata API (mdapi)
+      # 7. Create delta packages (for changed, new, or deleted metadata)
+      - name: 'Create delta packages for new, modified or deleted metadata'
+        run: |
+          mkdir changed-sources
+          sfdx sgd:source:delta --to "HEAD" --from "HEAD^" --output changed-sources/ --generate-delta --source force-app/
+
+      # 8. Deploy metadata using the Metadata API (mdapi)
       - name: 'Deploy metadata using Metadata API (mdapi)'
         run: |
           sfdx force:mdapi:deploy -d changed-sources --deploydir manifest/ --wait 10 --json
-
