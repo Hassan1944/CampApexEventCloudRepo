@@ -1,0 +1,65 @@
+name: Deploy to Salesforce and Install Package if Needed
+
+on:
+  push:
+    branches:
+      - main  # Trigger the deployment on push to the main branch
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    # 1. Checkout the code from GitHub
+    - name: Checkout code
+      uses: actions/checkout@v3
+
+    # 2. Set up Salesforce CLI
+    - name: Set up Salesforce CLI
+      uses: wadewegner/sfdx-action@v1
+
+    # 3. Authenticate to Salesforce Org
+    - name: Authenticate to Salesforce Org
+      run: |
+        echo ${{ secrets.SF_PASSWORD }} | sfdx auth:web:login --username ${{ secrets.SF_USERNAME }} --instanceurl ${{ secrets.SF_ORG_URL }} --setalias my-org --no-prompt
+      env:
+        SF_PASSWORD: ${{ secrets.SF_PASSWORD }}
+        SF_USERNAME: ${{ secrets.SF_USERNAME }}
+        SF_ORG_URL: ${{ secrets.SF_ORG_URL }}
+
+    # 4. Check if the Package is Installed
+    - name: Check if Managed Package is Installed
+      id: package_check
+      run: |
+        # List installed packages and check if the package is installed
+        INSTALLED_PACKAGES=$(sfdx force:package:installed:list --json)
+        PACKAGE_INSTALLED=$(echo "$INSTALLED_PACKAGES" | jq -r '.result[] | select(.SubscriberPackageName=="${{ secrets.PACKAGE_NAME }}") | .SubscriberPackageName')
+        
+        # Set output variable
+        if [[ "$PACKAGE_INSTALLED" == "${{ secrets.PACKAGE_NAME }}" ]]; then
+          echo "Package already installed."
+          echo "package_installed=true" >> $GITHUB_ENV
+        else
+          echo "Package not installed."
+          echo "package_installed=false" >> $GITHUB_ENV
+        fi
+
+    # 5. Install Managed Package if Not Installed
+    - name: Install Managed Package
+      if: env.package_installed == 'false'
+      run: |
+        echo "Installing package..."
+        sfdx force:package:install --package ${{ secrets.PACKAGE_ID }} --wait 10 --publishwait 10 --noprompt
+      env:
+        PACKAGE_ID: ${{ secrets.PACKAGE_ID }}
+
+    # 6. Deploy Salesforce Code
+    - name: Deploy Salesforce Code
+      run: |
+        sfdx force:source:deploy -p force-app --testlevel RunLocalTests --checkonly
+        # Remove the --checkonly flag to actually deploy instead of just validating.
+
+    # 7. Post Deployment Status
+    - name: Post Deployment Status
+      run: |
+        echo "Deployment finished successfully!"
