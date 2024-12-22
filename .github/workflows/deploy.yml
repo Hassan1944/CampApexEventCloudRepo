@@ -9,7 +9,7 @@ on:
 jobs:
   Deploy-to-playfullHS-environment:
       runs-on: ubuntu-latest
-      environment: playfullHS
+      environment: CampApexEventCloud_PROD
       steps:
           - uses: actions/setup-node@v3
             with:
@@ -36,5 +36,5 @@ jobs:
           - name: 'Deploy to environment with running all local tests'
             run: |
                 echo "${{ secrets.SECRET_KEY }}" > server.key
-                sf org login jwt --username ${{ secrets.SF_USERNAME }} --jwt-key-file server.key --client-id ${{ secrets.CLIENT_ID }} --instance-url ${{ vars.SF_ORG_URL }} --set-default
+                sf org login jwt --username ${{ vars.SF_USERNAME }} --jwt-key-file server.key --client-id ${{ secrets.CLIENT_ID }} --instance-url ${{ vars.SF_ORG_URL }} --set-default
                 sf project deploy start --source-dir changed-sources/force-app  
