@@ -1,75 +1,40 @@
-name: Deploy master branch to production org
+name: Deploy to playful prod environment on push to main
 
 on:
   push:
     branches: [ main ]
     paths:
-      - 'force-app/**'  # Trigger only on changes inside the `force-app` directory
+      - 'force-app/**'
 
 jobs:
-  deploy-branch-to-production-org:
-    runs-on: ubuntu-latest
-    if: ${{ github.actor != 'dependabot[bot]' }}  # Skip for Dependabot
+  Deploy-to-playfullHS-environment:
+      runs-on: ubuntu-latest
+      environment: playfullHS
+      steps:
+          - uses: actions/setup-node@v3
+            with:
+              node-version: '18'
+          - name: 'Checkout source code'
+            uses: actions/checkout@v3
+            with:
+              fetch-depth: '2'
+                
+          # Now Install Salesforce CLI
+          - name: 'Install sfdx'
+            run: npm install @salesforce/cli --global
+          - name: 'Installing sfdx git delta'
+            run: | 
+                echo Y | sfdx plugins:install sfdx-git-delta
+                sfdx plugins
 
-    steps:
-      # 1. Install Salesforce CLI
-      - name: 'Install Salesforce CLI'
-        run: |
-          wget https://developer.salesforce.com/media/salesforce-cli/sfdx/channels/stable/sfdx-linux-x64.tar.xz
-          mkdir ~/sfdx
-          tar xJf sfdx-linux-x64.tar.xz -C ~/sfdx --strip-components 1
-          echo "$HOME/sfdx/bin" >> $GITHUB_PATH
-          ~/sfdx/bin/sfdx version
-
-      # 2. Install SFDX-Git-Delta plugin (optional but useful for delta deployments)
-      - name: 'Install sfdx git delta'
-        run: |
-          echo y | sfdx plugins:install sfdx-git-delta
-          sfdx plugins
-
-      # 3. Checkout the source code
-      - name: 'Checkout source code'
-        uses: actions/checkout@v3
-        with:
-          fetch-depth: 0  # Ensure full history to calculate deltas properly
-
-      # 4. Authenticate to Salesforce using username/password and instance URL
-      - name: 'Authenticate to Salesforce Production Org'
-        run: |
-          echo "Authenticating to Salesforce..."
-          sfdx auth:web:login --username ${{ secrets.SF_USERNAME }} --password ${{ secrets.SF_PASSWORD }} --instanceurl ${{ secrets.SF_INSTANCE_URL }} --setalias production --no-prompt
-
-      # 5. Check if the package is already installed
-      - name: 'Check if Managed Package is Installed'
-        id: package_check
-        run: |
-          INSTALLED_PACKAGES=$(sfdx force:package:installed:list --json)
-          PACKAGE_INSTALLED=$(echo "$INSTALLED_PACKAGES" | jq -r '.result[] | select(.SubscriberPackageName=="${{ secrets.PACKAGE_NAME }}") | .SubscriberPackageName')
-          
-          # Set output variable
-          if [[ "$PACKAGE_INSTALLED" == "${{ secrets.PACKAGE_NAME }}" ]]; then
-            echo "Package already installed."
-            echo "package_installed=true" >> $GITHUB_ENV
-          else
-            echo "Package not installed."
-            echo "package_installed=false" >> $GITHUB_ENV
-
-      # 6. Install Managed Package if Not Installed
-      - name: 'Install Managed Package'
-        if: env.package_installed == 'false'
-        run: |
-          echo "Installing package..."
-          sfdx force:package:install --package ${{ secrets.PACKAGE_ID }} --wait 10 --publishwait 10 --noprompt
-        env:
-          PACKAGE_ID: ${{ secrets.PACKAGE_ID }}
-
-      # 7. Create delta packages (for changed, new, or deleted metadata)
-      - name: 'Create delta packages for new, modified or deleted metadata'
-        run: |
-          mkdir changed-sources
-          sfdx sgd:source:delta --to "HEAD" --from "HEAD^" --output changed-sources/ --generate-delta --source force-app/
-
-      # 8. Deploy metadata using the Metadata API (mdapi)
-      - name: 'Deploy metadata using Metadata API (mdapi)'
-        run: |
-          sfdx force:mdapi:deploy -d changed-sources --deploydir manifest/ --wait 10 --json
+          - name: 'Create delta packages'
+            run: | 
+                mkdir changed-sources
+                sf sgd source delta --to "HEAD" --from "HEAD~1" --output changed-sources/ --generate-delta --source force-app/
+                echo "[INFO] Diff generated"
+                
+          - name: 'Deploy to environment with running all local tests'
+            run: |
+                echo "${{ secrets.SECRET_KEY }}" > server.key
+                sf org login jwt --username ${{ secrets.SF_USERNAME }} --jwt-key-file server.key --client-id ${{ secrets.CLIENT_ID }} --instance-url ${{ vars.SF_ORG_URL }} --set-default
+                sf project deploy start --source-dir changed-sources/force-app  
