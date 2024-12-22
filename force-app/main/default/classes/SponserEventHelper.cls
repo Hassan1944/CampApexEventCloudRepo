@@ -11,7 +11,7 @@ public with sharing class SponserEventHelper {
             }
         }
     }
-
+//adding for the deployment
     public static void assignTierToSponser(list<CAMPX__Sponsor__c> triggerNew){
         for(CAMPX__Sponsor__c nspr : triggerNew){
             if(nspr.CAMPX__ContributionAmount__c == 0 || nspr.CAMPX__ContributionAmount__c == null || nspr.CAMPX__ContributionAmount__c <= 0){

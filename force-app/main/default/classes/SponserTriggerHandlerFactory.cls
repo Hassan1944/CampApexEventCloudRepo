@@ -12,7 +12,7 @@ public with sharing class SponserTriggerHandlerFactory {
         Triggernewmap = (Map<Id, CAMPX__Sponsor__c>) Trigger.newMap;
         Triggeroldmap = (Map<Id, CAMPX__Sponsor__c>) Trigger.oldMap;
     }
-
+//adding for the deployment
     // Main Method for handling the Actions
     public void doAction() {
         if (Trigger.isBefore) {
